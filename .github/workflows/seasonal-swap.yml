@@ -1,0 +1,42 @@
+name: Seasonal mascot swap
+
+on:
+  schedule:
+    - cron: "15 9 * * *"     # daily, 09:15 UTC (5:15 AM Eastern in summer, 4:15 AM in winter)
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Test date (YYYY-MM-DD). Leave blank for today."
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  swap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pick season and copy files
+        id: season
+        env:
+          SEASON_DATE: ${{ github.event.inputs.date }}
+        run: python3 .github/scripts/season.py
+
+      - name: Monthly heartbeat (keeps the schedule from being auto-disabled)
+        if: github.event_name == 'schedule'
+        run: |
+          if [ "$(date -u +%d)" = "01" ]; then date -u +%Y-%m-%d > .github/last-run.txt; fi
+
+      - name: Commit if anything changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898699+github-actions[bot]@users.noreply.github.com"
+          git add -A -- . ':!seasonal'
+          if git diff --cached --quiet; then
+            echo "No changes."
+          else
+            git commit -m "Seasonal swap: ${{ steps.season.outputs.season }}"
+            git push
+          fi
